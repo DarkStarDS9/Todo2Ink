@@ -1,0 +1,99 @@
+name: Todo2Ink
+
+options:
+  bundleIdPrefix: app.todo2ink
+  deploymentTarget:
+    iOS: "17.0"
+  generateEmptyDirectories: true
+
+configs:
+  Debug: debug
+  Release: release
+
+# Project-wide build settings live here, not in the Xcode GUI — xcodegen regenerates the
+# .xcodeproj on every run and would discard GUI edits.
+settings:
+  base:
+    STRING_CATALOG_GENERATE_SYMBOLS: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    SWIFT_VERSION: "5.0"
+
+# CompanionKit is a versioned Swift package (github.com/DarkStarDS9/CompanionKit); its major
+# version tracks the protocol version it implements. Package.resolved is what now records which
+# protocol revision this app was built against — bump the pin deliberately.
+packages:
+  CompanionKit:
+    url: https://github.com/DarkStarDS9/CompanionKit.git
+    from: 12.0.0
+
+targets:
+  Todo2Ink:
+    type: application
+    platform: iOS
+    sources:
+      - path: Todo2Ink
+        excludes:
+          - "Configs/**"
+    configFiles:
+      Debug: Todo2Ink/Configs/Debug.xcconfig
+      Release: Todo2Ink/Configs/Release.xcconfig
+    dependencies:
+      - package: CompanionKit
+        product: CompanionKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.todo2ink.reminders
+        TARGETED_DEVICE_FAMILY: "1"
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_STYLE: Automatic
+        # DEVELOPMENT_TEAM is intentionally not set here -- it's personal to whichever Apple
+        # Developer account is building. It comes from Todo2Ink/Configs/Local.xcconfig, a
+        # gitignored file each contributor creates once; see
+        # Todo2Ink/Configs/Local.xcconfig.example and README.md's "Building" section for how to
+        # find your own team id and set it up. Simulator builds ignore it entirely.
+      configs:
+        Debug:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+    info:
+      path: Todo2Ink/Info.plist
+      properties:
+        CFBundleDisplayName: Todo2Ink
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        ITSAppUsesNonExemptEncryption: false
+        UILaunchScreen: {}
+        UIRequiresFullScreen: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSRemindersUsageDescription: "Todo2Ink reads and checks off items in the Reminders lists you choose to sync to your e-ink display."
+        NSBluetoothAlwaysUsageDescription: "Todo2Ink connects to your XTEINK companion display to sync your lists."
+        UIBackgroundModes:
+          - bluetooth-central
+
+  Todo2InkTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Todo2InkTests
+    dependencies:
+      - target: Todo2Ink
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.todo2ink.reminders.tests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  Todo2Ink:
+    build:
+      targets:
+        Todo2Ink: all
+        Todo2InkTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - Todo2InkTests
+    archive:
+      config: Release

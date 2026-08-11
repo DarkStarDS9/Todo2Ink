@@ -1,0 +1,5 @@
+SWIFT_OPTIMIZATION_LEVEL = -O
+
+// Local.xcconfig is gitignored and personal to each machine (sets DEVELOPMENT_TEAM). See
+// Todo2Ink/Configs/Local.xcconfig.example.
+#include? "Local.xcconfig"

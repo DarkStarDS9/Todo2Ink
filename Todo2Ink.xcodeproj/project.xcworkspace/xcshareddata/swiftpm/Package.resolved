@@ -1,0 +1,15 @@
+{
+  "originHash" : "63593614aa1197cd072ddaedcabf170e5a4b2be744093cbb9888043d3bef499c",
+  "pins" : [
+    {
+      "identity" : "companionkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/DarkStarDS9/CompanionKit.git",
+      "state" : {
+        "revision" : "7b156b09ae7e657183354ceac63b524e0cf7f1c8",
+        "version" : "12.1.0"
+      }
+    }
+  ],
+  "version" : 3
+}

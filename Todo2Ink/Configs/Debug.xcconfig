@@ -1,0 +1,8 @@
+// Debug build configuration. Kept as a file (rather than target settings) to match the sibling
+// Snap2Ink project's layout, so environment-specific values have an obvious home the day
+// Todo2Ink grows one.
+SWIFT_OPTIMIZATION_LEVEL = -Onone
+
+// Local.xcconfig is gitignored and personal to each machine (sets DEVELOPMENT_TEAM). See
+// Todo2Ink/Configs/Local.xcconfig.example.
+#include? "Local.xcconfig"

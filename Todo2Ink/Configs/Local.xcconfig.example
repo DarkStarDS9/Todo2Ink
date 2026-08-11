@@ -1,0 +1,7 @@
+// Copy this file to Local.xcconfig (gitignored) and fill in your own team id.
+//
+// Find it from your Apple Development certificate's subject in Keychain Access
+// (My Certificates ▸ Apple Development: you@example.com ▸ get info): the **OU** field is the
+// team id (the value in parentheses next to your name is your Apple ID's own identifier, not
+// the team, and using it here fails with "No Account for Team").
+DEVELOPMENT_TEAM = YOURTEAMID
