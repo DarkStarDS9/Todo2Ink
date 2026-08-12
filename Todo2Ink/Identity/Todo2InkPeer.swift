@@ -88,14 +88,20 @@ enum Todo2InkPeer {
     }
 }
 
-/// Supplies the one per-peer asset the device stores and versions by tag: the UI declaration.
+/// Supplies the two per-peer assets the device stores and versions by tag: the UI declaration and
+/// the sleep-screen tile icon.
 ///
-/// No icon yet — `icon(for:)` returns `nil` until Todo2Ink ships one; the device simply shows no
-/// custom tile artwork on its sleep screen until then, which is a cosmetic gap, not a functional one.
+/// Not `StaticAssetProvider`, because the icon is *rendered* to whatever dimensions the device
+/// advertises rather than shipped at a fixed size — see `DeviceIcon`, same pattern as Snap2Ink's own
+/// `Snap2InkAssetProvider`.
 final class Todo2InkAssetProvider: CompanionAssetProvider, @unchecked Sendable {
     var uiDeclaration: UiDeclaration { Todo2InkPeer.uiDeclaration }
 
     func icon(for capabilities: CompanionCapabilities) -> Data? {
-        nil
+        DeviceIcon.encoded(
+            width: capabilities.iconPixelWidth,
+            height: capabilities.iconPixelHeight,
+            expectedByteCount: capabilities.iconByteCount
+        )
     }
 }

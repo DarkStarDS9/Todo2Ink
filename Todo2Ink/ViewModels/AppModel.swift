@@ -5,16 +5,26 @@ import Foundation
 final class AppModel: ObservableObject {
     @Published private(set) var transportState: TransportState = .idle
     @Published var lists: [ReminderList] = []
-    @Published var selectedListIds: Set<String> = []
+    @Published var selectedListIds: Set<String> {
+        didSet { persistSelectedListIds() }
+    }
+    @Published private(set) var syncStatus: SyncStatus = .idle
 
     private let transport: DisplayTransport
     private let reminders: RemindersService
     private let syncEngine: TodoSyncEngine
+    private let defaults: UserDefaults
+    private static let selectedListIdsDefaultsKey = "Todo2Ink.selectedListIds"
 
-    init(transport: DisplayTransport, reminders: RemindersService) {
+    init(transport: DisplayTransport, reminders: RemindersService, defaults: UserDefaults = .standard) {
         self.transport = transport
         self.reminders = reminders
+        self.defaults = defaults
         self.syncEngine = TodoSyncEngine(transport: transport, reminders: reminders)
+
+        let savedIds = defaults.stringArray(forKey: Self.selectedListIdsDefaultsKey) ?? []
+        self.selectedListIds = Set(savedIds)
+        self.syncEngine.selectedListIds = savedIds
 
         transport.onStateChange = { [weak self] state in
             self?.transportState = state
@@ -26,6 +36,13 @@ final class AppModel: ObservableObject {
             DebugLog.shared.log("list state available: revision \(revision), \(count) deviations")
             self?.syncEngine.markPullOwed()
         }
+        syncEngine.onStatusChange = { [weak self] status in
+            self?.syncStatus = status
+        }
+    }
+
+    private func persistSelectedListIds() {
+        defaults.set(Array(selectedListIds), forKey: Self.selectedListIdsDefaultsKey)
     }
 
     func connect() {
@@ -57,6 +74,13 @@ final class AppModel: ObservableObject {
         if transportState == .ready {
             syncNowInBackground()
         }
+    }
+
+    /// Manual sync, for the "Sync Now" button — a no-op unless the link is actually `.ready`, since
+    /// that's the only state `TodoSyncEngine.syncNow()` does anything in anyway.
+    func syncNow() {
+        guard transportState == .ready else { return }
+        syncNowInBackground()
     }
 
     private func syncNowInBackground() {

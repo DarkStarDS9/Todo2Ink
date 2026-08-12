@@ -2,10 +2,18 @@ import CompanionKit
 import EventKit
 import Foundation
 
+/// What `syncNow()` is doing, for the UI to show — see `PairingView`'s sync readout.
+enum SyncStatus: Equatable {
+    case idle
+    case syncing
+    case succeeded(at: Date)
+    case failed(at: Date, message: String)
+}
+
 /// Drives the pull → merge → push loop between Reminders and the reader.
 ///
-/// **Stub.** The shape this will take, per `docs/companion-todo-list-design.md` §7 in the firmware
-/// repo and CompanionKit's own doc comments:
+/// The loop, per `docs/companion-todo-list-design.md` §7 in the firmware repo and CompanionKit's own
+/// doc comments:
 ///
 /// 1. On `.ready` (screen acquired): build a `TodoDocument` from the user's selected Reminders
 ///    lists via `ReminderMapping`, and `client.pushTodoDocument(_:)`.
@@ -27,6 +35,10 @@ final class TodoSyncEngine {
     private let transport: DisplayTransport
     private let reminders: RemindersService
     private let mapping = ReminderMapping()
+
+    /// Mirrors `DisplayTransport.onStateChange`'s shape — `AppModel` observes this the same way it
+    /// observes transport state, so the UI can show "Syncing…"/"Synced 2:45 PM"/an error inline.
+    var onStatusChange: ((SyncStatus) -> Void)?
 
     init(transport: DisplayTransport, reminders: RemindersService) {
         self.transport = transport
@@ -56,6 +68,8 @@ final class TodoSyncEngine {
         let lists = reminders.fetchLists().filter { selectedListIds.contains($0.id) }
         guard !lists.isEmpty else { return }
 
+        onStatusChange?(.syncing)
+
         let allReminders = await reminders.fetchReminders(in: lists.map(\.id))
         let remindersByListId = Dictionary(grouping: allReminders) { $0.calendar.calendarIdentifier }
 
@@ -83,8 +97,10 @@ final class TodoSyncEngine {
 
             try await client.pushTodoDocument(document)
             currentRevision = document.revision
+            onStatusChange?(.succeeded(at: Date()))
         } catch {
             DebugLog.shared.log("Todo sync failed: \(error)")
+            onStatusChange?(.failed(at: Date(), message: "\(error)"))
         }
     }
 }
