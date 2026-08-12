@@ -1,4 +1,5 @@
 import CompanionKit
+import EventKit
 import Foundation
 
 /// Drives the pull → merge → push loop between Reminders and the reader.
@@ -35,7 +36,55 @@ final class TodoSyncEngine {
     /// Which Reminders lists to sync — set by `ListPickerView`, persisted by the caller.
     var selectedListIds: [String] = []
 
+    /// The document revision last pushed. Starts at 0, matching a device that has never seen this
+    /// peer's document — a push always replaces the whole document regardless of revision, so this
+    /// resetting on relaunch is harmless (see `docs/companion-todo-list-design.md` §6/§7).
+    private var currentRevision: UInt32 = 0
+
+    /// Set by `AppModel` when `CompanionEvent.listStateAvailable` fires. Per §7, that can arrive
+    /// before the screen is held — this only remembers a pull is owed, `syncNow()` decides when to
+    /// act on it.
+    private var pullOwed = false
+
+    func markPullOwed() {
+        pullOwed = true
+    }
+
     func syncNow() async {
-        // TODO: implement the loop described above.
+        guard let client = transport.client, transport.state == .ready else { return }
+
+        let lists = reminders.fetchLists().filter { selectedListIds.contains($0.id) }
+        guard !lists.isEmpty else { return }
+
+        let allReminders = await reminders.fetchReminders(in: lists.map(\.id))
+        let remindersByListId = Dictionary(grouping: allReminders) { $0.calendar.calendarIdentifier }
+
+        do {
+            var document = TodoDocumentBuilder.build(
+                lists: lists,
+                remindersByListId: remindersByListId,
+                mapping: mapping,
+                revision: currentRevision
+            )
+
+            if pullOwed {
+                let deviations = try await client.pullListState()
+                document = try document.mergingDeviceDeviations(
+                    deviations,
+                    newRevision: currentRevision + 1,
+                    evenIfRevisionMismatched: true
+                )
+                for (itemId, checked) in deviations.checkedByItemId {
+                    guard let reminderId = mapping.reminderId(forItemId: itemId) else { continue }
+                    try? reminders.setCompleted(checked, forReminderId: reminderId)
+                }
+                pullOwed = false
+            }
+
+            try await client.pushTodoDocument(document)
+            currentRevision = document.revision
+        } catch {
+            DebugLog.shared.log("Todo sync failed: \(error)")
+        }
     }
 }

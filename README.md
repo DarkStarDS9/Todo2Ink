@@ -82,9 +82,13 @@ Xcode shadows the remote package reference automatically, no project file change
 
 ## Status
 
-Scaffold only. Pairing reuses CompanionKit exactly as Snap2Ink does; the Reminders read/write layer
-and the pull-merge-push sync loop are not yet implemented — see `Todo2Ink/Reminders/` and
-`Todo2Ink/Sync/` for the stubs and their TODOs.
+Pairing reuses CompanionKit exactly as Snap2Ink does. The Reminders read/write layer
+(`Todo2Ink/Reminders/`) and the pull-merge-push sync loop (`Todo2Ink/Sync/TodoSyncEngine.swift`) are
+implemented, including the Reminders access prompt. Not yet paired against a real reader to confirm
+HELLO/ACQUIRE and the sync loop end to end — that needs a physical device and reader.
+
+See `docs/testflight.md` for TestFlight deployment status and the remaining one-time account setup
+(bundle ID registration, app record, provisioning profile) before a build can be uploaded.
 
 ## License
 

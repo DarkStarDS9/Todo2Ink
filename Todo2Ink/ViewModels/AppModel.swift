@@ -18,10 +18,13 @@ final class AppModel: ObservableObject {
 
         transport.onStateChange = { [weak self] state in
             self?.transportState = state
+            if state == .ready {
+                self?.syncNowInBackground()
+            }
         }
         transport.onListStateAvailable = { [weak self] revision, count in
             DebugLog.shared.log("list state available: revision \(revision), \(count) deviations")
-            // TODO: schedule a pull once TodoSyncEngine's loop is implemented.
+            self?.syncEngine.markPullOwed()
         }
     }
 
@@ -33,7 +36,14 @@ final class AppModel: ObservableObject {
         transport.disconnect()
     }
 
-    func loadLists() {
+    /// Requests Reminders access if needed, then loads the picker's list of calendars. Safe to call
+    /// repeatedly (e.g. from `ListPickerView`'s `.task`) — `requestAccess()` just reports existing
+    /// access on every call after the first.
+    func loadLists() async {
+        guard (try? await reminders.requestAccess()) == true else {
+            lists = []
+            return
+        }
         lists = reminders.fetchLists()
     }
 
@@ -44,5 +54,14 @@ final class AppModel: ObservableObject {
             selectedListIds.insert(id)
         }
         syncEngine.selectedListIds = Array(selectedListIds)
+        if transportState == .ready {
+            syncNowInBackground()
+        }
+    }
+
+    private func syncNowInBackground() {
+        Task { [syncEngine] in
+            await syncEngine.syncNow()
+        }
     }
 }

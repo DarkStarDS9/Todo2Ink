@@ -20,7 +20,7 @@ struct ListPickerView: View {
             }
             .foregroundStyle(.primary)
         }
-        .task { model.loadLists() }
+        .task { await model.loadLists() }
         .navigationTitle("Lists")
     }
 }

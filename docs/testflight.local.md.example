@@ -1,0 +1,33 @@
+Copy this file to `docs/testflight.local.md` (gitignored) and fill in your own account's values.
+Never commit the real one.
+
+## App Store Connect API key
+
+- Key ID: `<from App Store Connect ▸ Users and Access ▸ Keys>`
+- Issuer ID: `<same page>`
+- Key file: `~/.appstoreconnect/private_keys/AuthKey_<key id>.p8` (not in this repo)
+- Team: `<your Apple Developer team id>`
+
+## ASC entity IDs (stable once created)
+
+- Bundle ID entity: `<id>` (`app.todo2ink.reminders`)
+- Distribution certificate: `<id>`
+- Provisioning profile: `<id>` ("Todo2Ink AppStore", uuid `<uuid>`)
+
+## Regenerating the provisioning profile
+
+If a capability change ever invalidates it, delete the old one and recreate:
+
+```python
+api('DELETE', 'profiles/<profile id>')
+resp = api('POST', 'profiles', {'data': {'type': 'profiles', 'attributes': {
+    'name': 'Todo2Ink AppStore', 'profileType': 'IOS_APP_STORE'
+}, 'relationships': {
+    'bundleId': {'data': {'type': 'bundleIds', 'id': '<bundle id entity>'}},
+    'certificates': {'data': [{'type': 'certificates', 'id': '<certificate id>'}]},
+    'devices': {'data': []}
+}}})
+# then write resp['data']['attributes']['profileContent'] (base64) to both
+#   ~/Library/Developer/Xcode/UserData/Provisioning Profiles/<uuid>.mobileprovision
+#   ~/Library/MobileDevice/Provisioning Profiles/<uuid>.mobileprovision
+```
