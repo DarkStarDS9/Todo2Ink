@@ -36,10 +36,10 @@ enum TransportState: Equatable {
 /// The seam between the app and the Companion Display Protocol.
 ///
 /// Nothing above this line knows about CoreBluetooth, GATT characteristics, or the session
-/// handshake — that is `CompanionKitTransport`'s business. `client` is exposed directly (rather than
-/// wrapped) so `TodoSyncEngine` can call `pushTodoDocument`/`pullListState` straight on it —
-/// CompanionKit already owns that pagination and merge-adjacent logic, and re-wrapping it here would
-/// just be a second seam saying the same thing.
+/// handshake — that is `CompanionKitTransport`'s business. `client` is the sync loop's own narrow
+/// seam, `TodoSyncClient`, rather than a `CompanionClient`: CompanionKit still owns the pagination
+/// and the wire codec, but the two calls that decide whether a check-off survives need to be fakeable
+/// from a test.
 @MainActor
 protocol DisplayTransport: AnyObject {
     var state: TransportState { get }
@@ -53,7 +53,7 @@ protocol DisplayTransport: AnyObject {
     var diagnostics: [DiagnosticEntry] { get }
 
     /// The underlying client, once connected — `nil` before a device has been discovered.
-    var client: CompanionClient? { get }
+    var client: (any TodoSyncClient)? { get }
 
     func connect()
     func disconnect()

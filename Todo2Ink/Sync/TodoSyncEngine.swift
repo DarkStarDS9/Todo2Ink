@@ -14,17 +14,17 @@ enum SyncStatus: Equatable {
 /// The loop, per `docs/companion-todo-list-design.md` §7 in the firmware repo and CompanionKit's own
 /// doc comments:
 ///
-/// 1. On `.ready` (screen acquired): build a `TodoDocument` by walking `SyncConfiguration` in order,
-///    asking each enabled provider for its selected lists' items, and `client.pushTodoDocument(_:)`.
-/// 2. On `onListStateAvailable` (fires as soon as `HELLO_OK`, before the screen is held — see
-///    `CompanionEvent.listStateAvailable`'s doc comment): remember that a pull is owed; do not pull
-///    yet.
-/// 3. Once the screen is held: `client.pullListState()` for the accumulated `TodoDeviations`, then
-///    `document.mergingDeviceDeviations(_:newRevision:)` to fold them into a new document revision.
-/// 4. Write each changed item's completion back to *whichever provider owns it*, resolving the
-///    deviation's wire `itemId` through `ProviderMapping`.
-/// 5. `client.pushTodoDocument(_:)` the merged document at the new revision, which also clears the
-///    device's diff.
+/// 1. On `.ready` (screen acquired), and again whenever `onListStateAvailable` says the reader has
+///    something to report: `client.pullDeviations()` for the accumulated `TodoDeviations`. Every run
+///    pulls, because a push clears the device's diff and so must never be the first thing a session
+///    does.
+/// 2. Build a `TodoDocument` by walking `SyncConfiguration` in order, asking each enabled provider
+///    for its selected lists' items.
+/// 3. Write each changed item's completion back to *whichever provider owns it*, resolving the
+///    deviation's wire `itemId` through `ProviderMapping`. This happens before assembly, so the
+///    document built in step 2 already reflects the check-off.
+/// 4. `document.mergingDeviceDeviations(_:newRevision:)` to fold the deviations into a new revision,
+///    then `client.pushDocument(_:)`, which also clears the device's diff.
 ///
 /// Kept as its own type, not folded into `CompanionKitTransport`, because it is sync policy
 /// (providers <-> TodoDocument), not link plumbing — the same separation `Snap2Ink`'s
@@ -60,13 +60,54 @@ final class TodoSyncEngine {
     /// Set by `AppModel` when `CompanionEvent.listStateAvailable` fires. Per §7, that can arrive
     /// before the screen is held — this only remembers a pull is owed, `syncNow()` decides when to
     /// act on it.
+    ///
+    /// It is a *trigger*, never a gate: `performSync()` pulls on every run whether or not this is
+    /// set, because gaining the screen and the list-state notification are two independent arrivals
+    /// and the notification is routinely the later one. Gating the pull on it lost a whole session's
+    /// check-offs to a 36 ms gap — the screen-gained sync pushed first, and a push replaces the
+    /// device's document and clears its diff, so the deviations were gone before anyone read them.
+    /// A pull with nothing to report is one cheap round trip; a pull skipped is silent data loss.
     private var pullOwed = false
 
     func markPullOwed() {
         pullOwed = true
     }
 
+    /// Whether a sync is in flight, and whether another was asked for while it was.
+    ///
+    /// Being `@MainActor` prevents a data race but not reentrancy: every `await` below is a point
+    /// where a second `syncNow()` can start, and the app has several triggers that fire together
+    /// (foregrounding, regaining the screen, a list-state notification). Two overlapping runs lose
+    /// the user's check-offs outright — the first pulls the deviations and clears `pullOwed`, the
+    /// second sees nothing owed and pushes a document assembled from a provider that hasn't been
+    /// written to yet, putting every box back. So a request that arrives mid-run is remembered and
+    /// serviced afterwards rather than run alongside.
+    private var isSyncing = false
+    private var syncRequestedWhileSyncing = false
+
+    /// How many times this run has abandoned an assembled document because the reader reported
+    /// changes while it was being assembled. Bounded so a device notifying continuously can't hold
+    /// the loop off the push forever: past the bound we push anyway, and the notification that
+    /// arrives next starts a fresh `syncNow()` that pulls before it pushes. That costs a cycle, not
+    /// a check-off.
+    private var restartsThisRun = 0
+
     func syncNow() async {
+        guard !isSyncing else {
+            syncRequestedWhileSyncing = true
+            return
+        }
+        isSyncing = true
+        restartsThisRun = 0
+        defer { isSyncing = false }
+
+        repeat {
+            syncRequestedWhileSyncing = false
+            await performSync()
+        } while syncRequestedWhileSyncing
+    }
+
+    private func performSync() async {
         guard let client = transport.client, transport.state == .ready else { return }
 
         onStatusChange?(.syncing)
@@ -76,26 +117,38 @@ final class TodoSyncEngine {
         // fetch is about to fail. Doing it first also means the document assembled below already
         // reflects the check-off, so the merge in step 3 has less to reconcile.
         var deviations: TodoDeviations?
-        if pullOwed {
-            do {
-                let pulled = try await client.pullListState()
-                await applyDeviations(pulled)
+        var writeBackFailures: [String] = []
+        do {
+            let pulled = try await client.pullDeviations()
+            pullOwed = false
+            if !pulled.checkedByItemId.isEmpty {
+                writeBackFailures = await applyDeviations(pulled)
                 deviations = pulled
-                pullOwed = false
-            } catch {
-                DebugLog.shared.log("Todo sync: pulling list state failed: \(error)")
-                onStatusChange?(.failed(at: Date(), message: "Couldn't read the reader's changes: \(error)"))
-                return
             }
+        } catch {
+            DebugLog.shared.log("Todo sync: pulling list state failed: \(error)")
+            onStatusChange?(.failed(at: Date(), message: "Couldn't read the reader's changes: \(error)"))
+            return
         }
 
-        let (todoLists, failures) = await assembleLists()
+        let (todoLists, assemblyFailures) = await assembleLists()
+        let failures = writeBackFailures + assemblyFailures
 
         guard todoLists.count <= TodoDocumentBuilder.maxLists else {
             onStatusChange?(.failed(
                 at: Date(),
                 message: "Too many lists selected — \(todoLists.count) of a maximum \(TodoDocumentBuilder.maxLists)."
             ))
+            return
+        }
+
+        // Assembly is seconds of network, and the reader can be checked off during it. Since a push
+        // clears the device's diff, pushing now would discard whatever arrived — so hand the run
+        // back to `syncNow()`, which starts again from the pull.
+        if pullOwed, restartsThisRun < 3 {
+            restartsThisRun += 1
+            DebugLog.shared.log("Todo sync: reader reported changes mid-sync; restarting before push")
+            syncRequestedWhileSyncing = true
             return
         }
 
@@ -108,7 +161,7 @@ final class TodoSyncEngine {
                     evenIfRevisionMismatched: true
                 )
             }
-            try await client.pushTodoDocument(document)
+            try await client.pushDocument(document)
             currentRevision = document.revision
 
             // A push that succeeded while a provider failed is still a failure worth surfacing:
@@ -171,15 +224,34 @@ final class TodoSyncEngine {
     /// the native id, so no provider is ever asked about an item that isn't its own and
     /// `TodoSyncEngine` never switches on provider kind. Adding a third backend changes nothing
     /// here.
-    private func applyDeviations(_ deviations: TodoDeviations) async {
+    /// Returns one sentence per check-off that did not reach its provider, for the status readout.
+    ///
+    /// A failure here is worse than a failed fetch and has to be at least as visible: the push that
+    /// follows clears the device's diff, so a check-off whose write-back threw is gone from both
+    /// sides — the provider never heard about it, and the reader has stopped remembering it. There
+    /// is no retry queue that could rescue it, which is exactly why the user has to be told rather
+    /// than shown a green "Synced".
+    private func applyDeviations(_ deviations: TodoDeviations) async -> [String] {
+        DebugLog.shared.log("Todo sync: applying \(deviations.checkedByItemId.count) deviation(s)")
+        var failures: [String] = []
         for (itemId, checked) in deviations.checkedByItemId {
             guard let (providerId, nativeId) = mapping.nativeItemId(forItemId: itemId),
-                  let provider = providersById[providerId] else { continue }
+                  let provider = providersById[providerId]
+            else {
+                // A deviation the mapping can't place is a check-off that will never reach any
+                // backend, and the next push then puts the box back — the exact failure this whole
+                // path exists to prevent. It was a silent `continue` once; it never should have
+                // been, because there is no way to see it from the outside.
+                DebugLog.shared.log("Todo sync: no provider for deviation on item \(itemId); dropped")
+                continue
+            }
             do {
                 try await provider.setCompleted(checked, forItemId: nativeId)
             } catch {
                 DebugLog.shared.log("Todo sync: write-back to \(providerId) failed: \(error)")
+                failures.append("\(provider.displayName) didn't record a check-off: \(error.localizedDescription)")
             }
         }
+        return failures
     }
 }

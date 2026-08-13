@@ -17,7 +17,7 @@ final class CompanionKitTransport: DisplayTransport {
     var onListStateAvailable: ((UInt32, UInt16) -> Void)?
 
     private let underlyingClient: CompanionClient
-    var client: CompanionClient? { underlyingClient }
+    var client: (any TodoSyncClient)? { underlyingClient }
     private var eventTask: Task<Void, Never>?
 
     init(client: CompanionClient) {
