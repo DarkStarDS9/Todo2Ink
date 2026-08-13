@@ -4,7 +4,7 @@ import SwiftUI
 struct Todo2InkApp: App {
     @StateObject private var model = AppModel(
         transport: Todo2InkApp.makeTransport(),
-        reminders: RemindersService()
+        providers: Todo2InkApp.makeProviders()
     )
     @Environment(\.scenePhase) private var scenePhase
 
@@ -35,5 +35,16 @@ struct Todo2InkApp: App {
     /// that loop is real and needs a fast, deviceless test target.
     private static func makeTransport() -> DisplayTransport {
         CompanionKitTransport()
+    }
+
+    /// Every sync backend the app knows about, in the order a first-time user meets them.
+    ///
+    /// This is the *only* place a provider is named. `AppModel`, `TodoSyncEngine` and every view
+    /// work from `TodoProvider` alone, so adding a backend means writing one conformance and adding
+    /// one line here — the user's own ordering, stored in `SyncConfiguration`, takes over from this
+    /// list as soon as they rearrange anything.
+    @MainActor
+    private static func makeProviders() -> [any TodoProvider] {
+        [RemindersProvider(service: RemindersService())]
     }
 }

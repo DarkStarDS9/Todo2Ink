@@ -36,16 +36,38 @@ narrower than it might look: map Reminders onto these types, and drive the pull 
 loop. Do not reimplement any of the wire codec or pagination here — if something about the sync
 feels missing, check CompanionKit's source first, since it was built for exactly this consumer.
 
+## Providers
+
+The app syncs from *providers*, not from Reminders specifically. Apple Reminders is one conformance
+of `TodoProvider` (`Todo2Ink/Providers/TodoProvider.swift`) and any future backend is another —
+`TodoSyncEngine`, `AppModel` and every view work from the protocol alone and never branch on which
+backend they are talking to. Adding one means writing a conformance and adding a line to
+`Todo2InkApp.makeProviders()`; nothing else should need to change, and if it does, that's a bug in
+the abstraction rather than a normal cost.
+
+`SyncConfiguration` holds the user's ordering: providers in order, and each provider's selected
+lists in order. The reader has only one flat run of lists and no concept of a provider, so those two
+orderings exist to compose into that one flat run — see `SyncConfiguration.flattened()`, which is
+the definition of what the device shows.
+
 ## Data model notes worth remembering
 
-- **`itemId` is a wire `u16`, phone-owned and opaque to the device.** EKReminder's stable identity
-  is `calendarItemIdentifier` (a string). `ReminderMapping` owns a persisted
-  `calendarItemIdentifier -> UInt16` table, assigned incrementally and never reused, so ids stay
-  stable across syncs even though the device treats them as meaningless.
-- **EventKit reminders are flat** — no subtasks, no sections (both are private API). Map each
-  `EKCalendar` (a Reminders list) to one `TodoList` with a single ungrouped `TodoGroup` (empty
-  label), matching the wire format's own "empty label = ungrouped" convention.
-- **Only user-selected Reminders lists sync** — never all of them by default.
+- **`itemId` is a wire `u16`, phone-owned and opaque to the device.** `ProviderMapping` owns the
+  persisted `(providerId, native id) -> UInt16` table, assigned incrementally and never reused, so
+  ids stay stable across syncs even though the device treats them as meaningless. **Keys must stay
+  namespaced by provider**: the u16 space is shared by every backend, and two providers' native id
+  formats are not allowed to be assumed distinct.
+- **The device counts lists in a `u8` — 255 lists maximum**, and that ceiling applies to the
+  *flattened* provider × list total, not per provider. `TodoDocumentBuilder.maxLists` mirrors
+  CompanionKit's own check so the UI can warn before a push fails.
+- **Every provider so far is flat** — EventKit reminders have no subtasks or sections (both private
+  API), and Bring's purchase/recently split is a completion state rather than a grouping. Each list
+  becomes one `TodoList` with a single ungrouped `TodoGroup` (empty label), matching the wire
+  format's own "empty label = ungrouped" convention.
+- **Only user-selected lists sync** — never all of them by default, for any provider.
+- **One provider's failure must not sink the others.** `TodoSyncEngine.assembleLists()` isolates
+  per provider: a failing one contributes zero lists (never stale ones) and the rest still reach the
+  device, but the overall `SyncStatus` still reports the failure.
 
 ## Upstream relationship
 
