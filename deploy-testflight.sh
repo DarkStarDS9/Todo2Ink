@@ -8,7 +8,16 @@ PROJECT="$SCRIPT_DIR/Todo2Ink.xcodeproj"
 EXPORT_OPTIONS="$SCRIPT_DIR/ExportOptions.plist"
 
 # Personal to this Apple Developer account -- never hardcoded/committed. Set these in your shell
-# profile once; see docs/testflight.md for where to find your own values.
+# profile, or in a gitignored .env beside this script (see .env.example); see docs/testflight.md
+# for where to find your own values. Useful because a shell profile like .zshrc is normally only
+# sourced by interactive shells, so a non-interactive caller (e.g. a script, CI, or an agent's
+# tool shell) would otherwise not see the exports even though a human's terminal does.
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "$SCRIPT_DIR/.env"
+    set +a
+fi
 : "${TODO2INK_ASC_KEY_ID:?Set TODO2INK_ASC_KEY_ID (see docs/testflight.md)}"
 : "${TODO2INK_ASC_ISSUER_ID:?Set TODO2INK_ASC_ISSUER_ID (see docs/testflight.md)}"
 ASC_KEY_ID="$TODO2INK_ASC_KEY_ID"
