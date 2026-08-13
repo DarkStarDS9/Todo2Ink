@@ -37,18 +37,26 @@ enum Todo2InkPeer {
     /// **Mandatory, not polish**: the device refuses `ACQUIRE` from a peer with no stored map, so an
     /// app with undefined buttons cannot reach the screen at all.
     ///
-    /// A `LIST`-shaped peer's Up/Down/Left/Right/Confirm are already claimed by the firmware's own
-    /// on-device list navigation (`docs/companion-todo-list-design.md` §5 in the firmware repo) —
-    /// item cursor, list switching, and check-off toggle are all local, no protocol surface. Every
-    /// entry here is therefore `.none`: Todo2Ink has nothing left to bind. `back` leaves the screen,
-    /// which the firmware also handles locally.
+    /// `Screen::List`'s navigation has no default handling of its own on the firmware side:
+    /// `handleListNav()` resolves every button through the peer's declared routing map and falls
+    /// through to nothing if a button isn't bound there, including Confirm. (There's one built-in
+    /// escape hatch — Back leaves the screen when the whole map is empty — but binding anything at
+    /// all forfeits it, which is why `back` is bound explicitly below rather than left implicit.)
+    /// Item cursor movement — the action used on every keypress while reading a list — sits on the
+    /// bottom-row Left/Right buttons, which are also the only ones with a hint-row label position;
+    /// list switching, used far less often, sits on the side Up/Down buttons, matching their
+    /// page-turn-like feel elsewhere in the firmware. This is a deliberate swap from the firmware's
+    /// old hardcoded physical bindings — the companion-todo-list design doc notes a user found those
+    /// backwards and asked for per-app configurability, which is exactly what this declared map is.
+    /// `localBack` is intentionally screen-agnostic rather than list-specific — see its doc comment
+    /// in CompanionKit.
     static let uiDeclaration = UiDeclaration(shape: .list, buttons: [
-        ButtonMapEntry(.confirm, .none),
-        ButtonMapEntry(.back, .none),
-        ButtonMapEntry(.left, .none),
-        ButtonMapEntry(.right, .none),
-        ButtonMapEntry(.up, .none),
-        ButtonMapEntry(.down, .none),
+        ButtonMapEntry(.confirm, .localListToggleCheck, label: "Check"),
+        ButtonMapEntry(.back, .localBack, label: "Back"),
+        ButtonMapEntry(.left, .localListMoveUp, label: "▲"),
+        ButtonMapEntry(.right, .localListMoveDown, label: "▼"),
+        ButtonMapEntry(.up, .localListSwitchLeft),
+        ButtonMapEntry(.down, .localListSwitchRight),
     ])
 
     private static let userLabelDefaultsKey = "Todo2Ink.userLabel"

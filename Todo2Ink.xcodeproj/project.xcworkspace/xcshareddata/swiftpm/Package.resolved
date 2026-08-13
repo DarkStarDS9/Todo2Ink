@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/DarkStarDS9/CompanionKit.git",
       "state" : {
-        "revision" : "7b156b09ae7e657183354ceac63b524e0cf7f1c8",
-        "version" : "12.1.0"
+        "revision" : "ed03c8afe47725dfca89903b5ba4187fc5f9863d",
+        "version" : "12.2.0"
       }
     }
   ],
