@@ -22,9 +22,17 @@ struct ProviderListsView: View {
                 statusFooter
             }
 
-            if model.isEnabled(providerId) {
-                selectedSection
-                availableSection
+            if model.isEnabled(providerId), let provider = model.provider(providerId) {
+                ProviderSettings.view(for: provider, model: model)
+
+                // The list pickers wait for the provider to actually be usable. Not a Bring! special
+                // case: a provider that hasn't been signed in to, or whose Reminders access was
+                // denied, has no lists to offer, and empty pickers above an unanswered "sign in"
+                // read as a bug rather than as a prerequisite.
+                if model.authStates[providerId] == .authorized {
+                    selectedSection
+                    availableSection
+                }
             }
         }
         .navigationTitle(model.provider(providerId)?.displayName ?? "Source")

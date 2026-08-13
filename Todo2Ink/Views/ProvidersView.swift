@@ -88,7 +88,11 @@ private struct ProviderRow: View {
 
     private var subtitle: String {
         guard model.isEnabled(provider.id) else { return "Off" }
-        if case .failed(let message) = model.authStates[provider.id] { return message }
+        // Anything short of authorized is what the row should say — a list count is a lie about a
+        // provider that can't reach its backend, and "0 lists" hides an unfinished sign-in.
+        if model.authStates[provider.id] != .authorized, let description = provider.statusDescription {
+            return description
+        }
         let count = model.configuration[provider.id]?.selectedListIds.count ?? 0
         return count == 1 ? "1 list" : "\(count) lists"
     }

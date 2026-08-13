@@ -45,6 +45,9 @@ struct Todo2InkApp: App {
     /// list as soon as they rearrange anything.
     @MainActor
     private static func makeProviders() -> [any TodoProvider] {
-        [RemindersProvider(service: RemindersService())]
+        [
+            RemindersProvider(service: RemindersService()),
+            BringProvider(),
+        ]
     }
 }

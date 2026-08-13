@@ -45,7 +45,10 @@ final class BringProvider: TodoProvider {
 
     var statusDescription: String? {
         switch authState {
-        case .notConfigured: return "Tap to sign in to Bring!"
+        // A statement rather than an instruction: this line appears both as the provider row's
+        // subtitle *and* directly above the sign-in form, and "tap to sign in" is wrong in the
+        // second place — there is nothing to tap, the fields are right there.
+        case .notConfigured: return "Not signed in"
         case .authorized: return nil
         case .failed(let message): return message
         }
