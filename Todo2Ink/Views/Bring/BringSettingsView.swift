@@ -18,6 +18,7 @@ struct BringSettingsView: View {
     @State private var isSigningIn = false
     @State private var errorMessage: String?
     @State private var options = BringOptions.default
+    @State private var isRefreshingCache = false
 
     private var isSignedIn: Bool { model.authStates[.bring] == .authorized }
 
@@ -26,6 +27,7 @@ struct BringSettingsView: View {
             if isSignedIn {
                 accountSection
                 optionsSection
+                dataSection
             } else {
                 signInSection
             }
@@ -133,5 +135,35 @@ struct BringSettingsView: View {
         .onChange(of: options) { _, newValue in
             provider.options = newValue
         }
+    }
+
+    /// The escape hatch for the article catalogue's 7-day disk cache — understated on purpose, since
+    /// this is a rarely-needed fallback, not something a user should ever need to reach for in
+    /// ordinary use.
+    @ViewBuilder
+    private var dataSection: some View {
+        Section {
+            Button {
+                Task { await refreshCache() }
+            } label: {
+                HStack {
+                    Text("Refresh Bring Data")
+                    if isRefreshingCache {
+                        Spacer()
+                        ProgressView()
+                    }
+                }
+            }
+            .disabled(isRefreshingCache)
+        } footer: {
+            Text("Clears cached item names and section info, so the next sync downloads them fresh "
+                 + "from Bring!.")
+        }
+    }
+
+    private func refreshCache() async {
+        isRefreshingCache = true
+        defer { isRefreshingCache = false }
+        await provider.clearCache()
     }
 }

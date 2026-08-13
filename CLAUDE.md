@@ -60,10 +60,33 @@ the definition of what the device shows.
 - **The device counts lists in a `u8` — 255 lists maximum**, and that ceiling applies to the
   *flattened* provider × list total, not per provider. `TodoDocumentBuilder.maxLists` mirrors
   CompanionKit's own check so the UI can warn before a push fails.
-- **Every provider so far is flat** — EventKit reminders have no subtasks or sections (both private
-  API), and Bring's purchase/recently split is a completion state rather than a grouping. Each list
-  becomes one `TodoList` with a single ungrouped `TodoGroup` (empty label), matching the wire
-  format's own "empty label = ungrouped" convention.
+- **Reminders is flat, Bring is grouped, and `TodoDocumentBuilder` handles both from one field.**
+  EventKit reminders genuinely have no subtasks or sections (both private API) and always set
+  `ProviderItem.section` to nil, which the builder collapses into the single ungrouped `TodoGroup`
+  (empty label) the wire format's own "empty label = ungrouped" convention describes. Bring sets a
+  section per item, and the builder makes one labelled `TodoGroup` per distinct one, in the order
+  the provider's array first mentions it — so a provider controls section order by ordering its
+  items, and the builder still knows nothing about any backend. The nil-section group always sorts
+  last, because Bring's recently-bought items are deliberately unsectioned: purchase/recently is a
+  completion state, not a grouping.
+- **Bring keys items *and sections* by a canonical name and displays a localized one** —
+  `"Pommes Chips"` on the wire is `"Chips"` in a de-DE list, and section `"Früchte & Gemüse"` is
+  headed `"Obst & Gemüse"` there. Both come from one file, `web.getbring.com/locale/catalog.{locale}.json`
+  (13 sections, ~360 articles; `articles.{locale}.json` is the same names without the sections and is
+  no longer used). `BringCatalogClient` resolves them; the canonical name stays the item's identity
+  everywhere else, because it is the only name Bring accepts in a write, and `sectionId` likewise
+  stays canonical so it can be ordered and compared across locales. A locale Bring publishes no
+  catalogue for (`en-DE` 404s) falls back to the base `de-CH` catalogue **for sections only** — ids
+  are locale-independent, so an unsupported locale still gets a grouped list, just with canonical
+  names. Per-list section order comes from `listSectionOrder` in the user settings — a plain JSON
+  array of section ids, confirmed against a real account, though still undocumented anywhere public,
+  so parsing stays defensive and falls back to the catalogue's own order.
+- **A section the catalogue doesn't have is where the user's own items go.** `listSectionOrder` ends
+  with one entry that is in no catalogue — `"Eigene Artikel"` on a German account — and that is what
+  Bring files a hand-typed item under. Most real lists are mostly hand-typed, so treating those items
+  as merely unsectioned collapses the whole list into one nameless run; `BringCatalogClient.ownArticlesSection(forList:)`
+  recovers the section as the order entry the catalogue can't account for, which also means it
+  arrives already localized and already in the position the user put it.
 - **Only user-selected lists sync** — never all of them by default, for any provider.
 - **One provider's failure must not sink the others.** `TodoSyncEngine.assembleLists()` isolates
   per provider: a failing one contributes zero lists (never stale ones) and the rest still reach the

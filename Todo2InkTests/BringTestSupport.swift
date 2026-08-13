@@ -119,6 +119,25 @@ extension BringSession {
     }
 }
 
+/// A catalogue store with no disk behind it — mirrors `InMemoryBringCredentialStore`. Tests share one
+/// instance across two `BringCatalogClient`s to prove the disk cache (not the in-memory one, which
+/// dies with the client) is what serves a second call.
+final class InMemoryBringCatalogStore: BringCatalogStore {
+    private var entries: [String: BringCatalogCacheEntry] = [:]
+
+    func load(locale: String) -> BringCatalogCacheEntry? { entries[locale] }
+    func save(_ entry: BringCatalogCacheEntry, locale: String) { entries[locale] = entry }
+    func clear() { entries = [:] }
+
+    /// Corrupts a stored entry's body in place, for the "unreadable cache data falls back to the
+    /// network" test — a real disk failure looks like this from `BringCatalogClient`'s side: the
+    /// entry is present and within its TTL, but decoding its body fails.
+    func corrupt(locale: String) {
+        guard let entry = entries[locale] else { return }
+        entries[locale] = BringCatalogCacheEntry(body: Data("not json".utf8), fetchedAt: entry.fetchedAt)
+    }
+}
+
 /// Response bodies as the real API returns them, trimmed to the fields this client reads.
 enum BringFixtures {
     static let auth = """
@@ -150,7 +169,26 @@ enum BringFixtures {
     }
     """
 
+    /// What a real account actually returned — the arrays nested under `items`.
     static let listContents = """
+    {
+      "uuid": "list-a",
+      "status": "REGISTERED",
+      "items": {
+        "purchase": [
+          { "uuid": "item-1", "itemId": "Milch", "specification": "2 Liter" },
+          { "uuid": "item-2", "itemId": "Brot", "specification": "" }
+        ],
+        "recently": [
+          { "uuid": "item-3", "itemId": "Butter", "specification": "" }
+        ]
+      }
+    }
+    """
+
+    /// The flat shape older clients document. Still accepted, so a server-side rollout can't leave
+    /// the app working on some accounts and broken on others.
+    static let flatListContents = """
     {
       "uuid": "list-a",
       "status": "REGISTERED",
@@ -163,4 +201,35 @@ enum BringFixtures {
       ]
     }
     """
+
+    /// `GET bringlists/{listUuid}/details` — the bare-array shape. `entries` is `(itemId,
+    /// userSectionId)`; pass `nil` for an entry with no override, matching a real account where most
+    /// items have none.
+    static func details(_ entries: [(itemId: String, userSectionId: String?)]) -> String {
+        let entriesJSON = entries.map { entry -> String in
+            let section = entry.userSectionId.map { "\"\($0)\"" } ?? "null"
+            return "{\"itemId\": \"\(entry.itemId)\", \"userSectionId\": \(section)}"
+        }.joined(separator: ", ")
+        return "[\(entriesJSON)]"
+    }
+
+    /// `GET web.getbring.com/locale/catalog.{locale}.json` — a real response nests sections and
+    /// items two levels deep, so this builds one from a plain list rather than hand-writing JSON at
+    /// every call site.
+    static func catalog(
+        language: String,
+        sections: [(id: String, name: String, items: [(itemId: String, name: String)])]
+    ) -> String {
+        let sectionsJSON = sections.map { section in
+            let itemsJSON = section.items
+                .map { "{\"itemId\": \"\($0.itemId)\", \"name\": \"\($0.name)\"}" }
+                .joined(separator: ", ")
+            return """
+            {"sectionId": "\(section.id)", "name": "\(section.name)", "items": [\(itemsJSON)]}
+            """
+        }.joined(separator: ", ")
+        return """
+        {"language": "\(language)", "catalog": {"sections": [\(sectionsJSON)]}}
+        """
+    }
 }

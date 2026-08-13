@@ -107,9 +107,152 @@ struct BringItem: Decodable, Equatable {
 /// `purchase` is the shopping list proper — things still to buy. `recently` is what was bought
 /// lately, which is Bring!'s equivalent of a completed item; it is a rolling window Bring! trims
 /// itself, not a full history.
+///
+/// Two shapes are accepted because the service returns both: the arrays nested under an `items`
+/// envelope (`{"uuid":…,"status":…,"items":{"purchase":[…],"recently":[…]}}`), and flat at the top
+/// level. The nested one is what a real account answered with; the flat one is what older clients
+/// document. Accepting both is not defensive padding — it is the difference between this working
+/// through a server-side rollout and failing halfway through one.
 struct BringListContentResponse: Decodable {
     let purchase: [BringItem]
     let recently: [BringItem]
+
+    private struct Items: Decodable {
+        let purchase: [BringItem]?
+        let recently: [BringItem]?
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case purchase
+        case recently
+        case items
+    }
+
+    init(purchase: [BringItem], recently: [BringItem]) {
+        self.purchase = purchase
+        self.recently = recently
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        if let nested = try container.decodeIfPresent(Items.self, forKey: .items) {
+            purchase = nested.purchase ?? []
+            recently = nested.recently ?? []
+            return
+        }
+
+        // A body with neither shape is a third shape, and must fail rather than decode to an empty
+        // list — "your shopping list is empty" is a much worse lie than an error message.
+        guard container.contains(.purchase) || container.contains(.recently) else {
+            throw DecodingError.keyNotFound(CodingKeys.items, DecodingError.Context(
+                codingPath: container.codingPath,
+                debugDescription: "no items, purchase or recently key"
+            ))
+        }
+        purchase = try container.decodeIfPresent([BringItem].self, forKey: .purchase) ?? []
+        recently = try container.decodeIfPresent([BringItem].self, forKey: .recently) ?? []
+    }
+}
+
+/// One entry of `GET bringlists/{listUuid}/details` — per-item overrides the list-contents endpoint
+/// doesn't carry, `userSectionId` chief among them: the section the user explicitly assigned an
+/// item to, which wins over whatever the article catalogue would otherwise say.
+///
+/// This endpoint is not documented by `miaucl/bring-api` at the time of writing, so the vocabulary
+/// of `userSectionId` (a canonical section id? a uuid? a localized name?) is unconfirmed — see
+/// `BringProvider` for how that gets logged rather than assumed. Every field but `itemId` is
+/// optional, so an endpoint that adds, renames or omits a field this client doesn't read never
+/// fails the decode.
+struct BringItemDetails: Decodable {
+    let itemId: String
+    let userSectionId: String?
+}
+
+/// `GET bringlists/{listUuid}/details`. The envelope is as unconfirmed as the field vocabulary
+/// above, so — following `BringListContentResponse`'s precedent — two shapes are accepted: a bare
+/// top-level array, and an object wrapping the array under a plausible key (`details`, mirroring
+/// how `BringListContentResponse` nests under `items`). A third shape must still fail rather than
+/// decode to empty: silently losing every override would read as "the user never assigned a
+/// section", which is a worse lie than an error.
+struct BringItemDetailsResponse: Decodable {
+    let details: [BringItemDetails]
+
+    private struct Wrapper: Decodable {
+        let details: [BringItemDetails]?
+    }
+
+    init(details: [BringItemDetails]) {
+        self.details = details
+    }
+
+    init(from decoder: Decoder) throws {
+        if let array = try? [BringItemDetails](from: decoder) {
+            details = array
+            return
+        }
+        if let wrapper = try? Wrapper(from: decoder), let wrapped = wrapper.details {
+            details = wrapped
+            return
+        }
+        throw DecodingError.dataCorrupted(DecodingError.Context(
+            codingPath: decoder.codingPath,
+            debugDescription: "neither a bare array nor an object with a details key"
+        ))
+    }
+}
+
+// MARK: - Settings
+
+/// `GET bringusersettings/{userUuid}` — settings for the account *and* for every one of its lists at
+/// once, as loosely-typed key/value pairs.
+///
+/// `listArticleLanguage` picks the catalogue a list's items are named from; `listSectionOrder` is
+/// Bring!'s own section order for that list, holding a JSON array encoded inside a string (exact
+/// shape unconfirmed — `BringCatalogClient` parses it defensively and falls back to the catalogue's
+/// own order if it can't).
+struct BringUserSettingsResponse: Decodable {
+    struct Entry: Decodable {
+        let key: String
+        let value: String
+    }
+
+    struct ListSettings: Decodable {
+        let listUuid: String
+        let usersettings: [Entry]
+    }
+
+    let usersettings: [Entry]?
+    let userlistsettings: [ListSettings]?
+}
+
+// MARK: - Catalogue
+
+/// `GET https://web.getbring.com/locale/catalog.{locale}.json` — the full per-locale article
+/// catalogue: every section Bring! groups items into, and each item's canonical and localized name.
+///
+/// Supersedes the flat `articles.{locale}.json` map this client used to fetch: the two agree on
+/// every display name (verified against all ~362 entries in the de-DE catalogue), and the catalogue
+/// additionally carries the section each item defaults into, which `articles.json` does not.
+struct BringCatalogResponse: Decodable {
+    struct Item: Decodable {
+        let itemId: String
+        let name: String
+    }
+
+    /// `sectionId` is the canonical (de-CH) section name and is stable across locales; `name` is
+    /// this locale's localized one.
+    struct Section: Decodable {
+        let sectionId: String
+        let name: String
+        let items: [Item]
+    }
+
+    struct Catalog: Decodable {
+        let sections: [Section]
+    }
+
+    let catalog: Catalog
 }
 
 // MARK: - Mutations

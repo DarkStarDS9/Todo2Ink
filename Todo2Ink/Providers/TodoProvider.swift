@@ -51,6 +51,18 @@ struct ProviderItem: Equatable {
     let id: String
     let text: String
     let checked: Bool
+    /// A display label to group this item under, or `nil` for no grouping. Purely cosmetic — it is
+    /// not an identifier, nothing persists it, and `TodoDocumentBuilder` groups items by equal label
+    /// alone. EventKit reminders have no notion of this and always pass `nil`; Bring! sets it to an
+    /// item's catalogue section.
+    let section: String?
+
+    init(id: String, text: String, checked: Bool, section: String? = nil) {
+        self.id = id
+        self.text = text
+        self.checked = checked
+        self.section = section
+    }
 }
 
 /// Whether a provider is usable, and if not, whose problem it is.

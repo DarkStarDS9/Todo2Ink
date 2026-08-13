@@ -29,7 +29,30 @@ actor BringListsClient {
     func contents(ofList listUuid: String) async throws -> BringListContentResponse {
         try await authenticated { session in
             let request = self.http.request(path: "v2/bringlists/\(listUuid)", session: session)
-            return try await self.http.send(request, decoding: BringListContentResponse.self)
+            // The one response whose full shape is worth logging every time: it is where a
+            // server-side change would show up first, and it is the only place that could be
+            // carrying per-item data this client doesn't yet read — section assignments among
+            // them. Keys only, so the log stays free of the user's own items.
+            return try await self.http.send(
+                request,
+                decoding: BringListContentResponse.self,
+                logShape: true
+            )
+        }
+    }
+
+    /// Per-item overrides for a list — `userSectionId` above all, the section a user explicitly
+    /// assigned an item to. A new, undocumented endpoint, so its shape is logged every call the way
+    /// `contents(ofList:)` logs its own — this is where a server-side change or a wrong guess about
+    /// the vocabulary would first show up.
+    func details(ofList listUuid: String) async throws -> [BringItemDetails] {
+        try await authenticated { session in
+            let request = self.http.request(path: "bringlists/\(listUuid)/details", session: session)
+            return try await self.http.send(
+                request,
+                decoding: BringItemDetailsResponse.self,
+                logShape: true
+            ).details
         }
     }
 

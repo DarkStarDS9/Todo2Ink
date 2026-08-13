@@ -65,13 +65,52 @@ struct BringHTTP {
 
     /// Sends a request and decodes its body, so a shape change reads as
     /// `malformedResponse("BringListsResponse")` rather than as an opaque `DecodingError`.
-    func send<T: Decodable>(_ request: URLRequest, decoding type: T.Type) async throws -> T {
+    func send<T: Decodable>(
+        _ request: URLRequest,
+        decoding type: T.Type,
+        logShape: Bool = false
+    ) async throws -> T {
         let data = try await send(request)
+        if logShape {
+            DebugLog.shared.log("bring: \(request.url?.path ?? "?") shape: \(Self.shape(of: data))")
+        }
         do {
             return try JSONDecoder().decode(type, from: data)
         } catch {
-            throw BringError.malformedResponse("\(type) from \(request.url?.path ?? "?")")
+            // The shape goes to the log, not to the error: the status bar has room for a type name
+            // and nothing more, and this is exactly the failure a user can only report from the
+            // field. Keys only, never values — the values are the user's shopping list.
+            DebugLog.shared.log("bring: \(type) decode failed; body shape: \(Self.shape(of: data))")
+            throw BringError.malformedResponse("\(type)")
         }
+    }
+
+    /// A response's key structure, with every value discarded — the keys tell us which fields a
+    /// response actually carries (useful when a decode fails and we need to see what changed on
+    /// Bring's side), while the values themselves are the user's shopping list and never belong in
+    /// a log. Depth is counted in object nesting only — arrays are transparent, so `purchase`'s
+    /// array of item objects still reveals `itemId, spec, uuid` rather than collapsing to `{…}` one
+    /// level too early — and a ceiling still applies past that so a pathological response can't
+    /// produce an unbounded log line.
+    static func shape(of data: Data) -> String {
+        guard let object = try? JSONSerialization.jsonObject(with: data) else {
+            return "not JSON (\(data.count) bytes)"
+        }
+        func describe(_ value: Any, depth: Int) -> String {
+            switch value {
+            case let dictionary as [String: Any] where depth > 0:
+                let keys = dictionary.keys.sorted()
+                    .map { "\($0)\(describe(dictionary[$0] as Any, depth: depth - 1))" }
+                return "{\(keys.joined(separator: ", "))}"
+            case is [String: Any]:
+                return "{…}"
+            case let array as [Any]:
+                return "[\(array.count)\(array.first.map { describe($0, depth: depth) } ?? "")]"
+            default:
+                return ""
+            }
+        }
+        return describe(object, depth: 3)
     }
 
     /// `application/x-www-form-urlencoded` body, which the two auth endpoints require and nothing
