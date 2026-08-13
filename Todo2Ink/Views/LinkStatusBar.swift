@@ -12,6 +12,7 @@ struct LinkStatusBar: View {
     @ObservedObject var model: AppModel
 
     @State private var showsLabelEditor = false
+    @State private var showsDebugLog = false
     @State private var labelDraft = ""
 
     var body: some View {
@@ -24,7 +25,13 @@ struct LinkStatusBar: View {
                 .foregroundStyle(messageIsError ? Color.red : .secondary)
                 .lineLimit(2)
             Spacer(minLength: 8)
+            // The primary action (connect/sync) sits closer to the text it explains; renaming is
+            // secondary and stays outermost, by the edge of the thumb's reach. The gap between the
+            // two is a fixed amount, not the HStack's shared spacing, so an errant tap can't
+            // clip both.
             trailingAction
+            renameButton
+                .padding(.leading, 18)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -34,9 +41,13 @@ struct LinkStatusBar: View {
         // Contains the whole bar, including the gaps, so the gesture is findable without hunting
         // for the text.
         .contentShape(.rect)
-        .onLongPressGesture {
-            labelDraft = Todo2InkPeer.userLabel()
-            showsLabelEditor = true
+        // Long-press for the debug log, in every build configuration, and renaming moved to the
+        // button above to make room for it — same arrangement as Snap2Ink. The gesture goes to the
+        // log rather than to the rename because renaming is a thing you do once and can hunt for,
+        // whereas the log is needed at the moment something has already gone wrong.
+        .onLongPressGesture { showsDebugLog = true }
+        .sheet(isPresented: $showsDebugLog) {
+            DebugLogView()
         }
         // Distinguishes this install of Todo2Ink from another one paired to the same reader — e.g.
         // two people sharing one reader — in the device's tile picker. Only takes effect on the
@@ -92,6 +103,19 @@ struct LinkStatusBar: View {
         case .pairingRefused, .failed, .disconnected, .backgrounded: return .red
         case .idle, .scanning, .connecting: return .gray
         }
+    }
+
+    private var renameButton: some View {
+        Button {
+            labelDraft = Todo2InkPeer.userLabel()
+            showsLabelEditor = true
+        } label: {
+            Image(systemName: "person.crop.circle")
+                .font(.footnote)
+                .padding(8)
+                .contentShape(.rect)
+        }
+        .accessibilityLabel("Name This Phone")
     }
 
     /// At most one button, because the bar only ever has one useful next move: connect when there
