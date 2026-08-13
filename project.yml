@@ -59,8 +59,8 @@ targets:
       path: Todo2Ink/Info.plist
       properties:
         CFBundleDisplayName: Todo2Ink
-        CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "1"
+        CFBundleShortVersionString: "0.2.0"
+        CFBundleVersion: "2"
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
         UIRequiresFullScreen: true
