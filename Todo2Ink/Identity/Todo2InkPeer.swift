@@ -50,11 +50,16 @@ enum Todo2InkPeer {
     /// backwards and asked for per-app configurability, which is exactly what this declared map is.
     /// `localBack` is intentionally screen-agnostic rather than list-specific — see its doc comment
     /// in CompanionKit.
+    ///
+    /// Left/Right use `ButtonLabels.up`/`.down` (`"^"`/`"v"`) rather than a triangle glyph like
+    /// "▲"/"▼": the device's built-in fonts are Latin-only, and those Geometric Shapes codepoints
+    /// have no glyph coverage at all — they rendered as a stray "?" on real hardware before this
+    /// was caught. See `ButtonLabels`'s doc comment in CompanionKit for the font's actual coverage.
     static let uiDeclaration = UiDeclaration(shape: .list, buttons: [
         ButtonMapEntry(.confirm, .localListToggleCheck, label: "Check"),
         ButtonMapEntry(.back, .localBack, label: "Back"),
-        ButtonMapEntry(.left, .localListMoveUp, label: "▲"),
-        ButtonMapEntry(.right, .localListMoveDown, label: "▼"),
+        ButtonMapEntry(.left, .localListMoveUp, label: ButtonLabels.up),
+        ButtonMapEntry(.right, .localListMoveDown, label: ButtonLabels.down),
         ButtonMapEntry(.up, .localListSwitchLeft),
         ButtonMapEntry(.down, .localListSwitchRight),
     ])

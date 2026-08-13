@@ -24,7 +24,7 @@ settings:
 packages:
   CompanionKit:
     url: https://github.com/DarkStarDS9/CompanionKit.git
-    from: 12.2.0
+    from: 12.3.0
 
 targets:
   Todo2Ink:
