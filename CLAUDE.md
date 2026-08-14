@@ -66,9 +66,11 @@ the definition of what the device shows.
   (empty label) the wire format's own "empty label = ungrouped" convention describes. Bring sets a
   section per item, and the builder makes one labelled `TodoGroup` per distinct one, in the order
   the provider's array first mentions it — so a provider controls section order by ordering its
-  items, and the builder still knows nothing about any backend. The nil-section group always sorts
-  last, because Bring's recently-bought items are deliberately unsectioned: purchase/recently is a
-  completion state, not a grouping.
+  items, and the builder still knows nothing about any backend. Bring's recently-bought items get
+  Bring's own "recently bought" header (`BringCatalogClient.recentlyLabel(forList:)`) rather than the
+  nil-section group — that header isn't in the API or catalogue anywhere, so it's a small hardcoded
+  per-language table, keyed by the list's own locale like every other section label. It always sorts
+  last because the provider appends it after every purchase section regardless of item order.
 - **Bring keys items *and sections* by a canonical name and displays a localized one** —
   `"Pommes Chips"` on the wire is `"Chips"` in a de-DE list, and section `"Früchte & Gemüse"` is
   headed `"Obst & Gemüse"` there. Both come from one file, `web.getbring.com/locale/catalog.{locale}.json`

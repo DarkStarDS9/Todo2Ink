@@ -60,7 +60,7 @@ targets:
       properties:
         CFBundleDisplayName: Todo2Ink
         CFBundleShortVersionString: "0.3.5"
-        CFBundleVersion: "13"
+        CFBundleVersion: "14"
         ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
         UIRequiresFullScreen: true

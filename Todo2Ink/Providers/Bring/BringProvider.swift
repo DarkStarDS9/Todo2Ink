@@ -225,14 +225,17 @@ final class BringProvider: TodoProvider {
                 // items survive the cut, not just their order — taking the first N of an oldest-first
                 // list keeps the least recent ones, which is the opposite of the point.
                 //
-                // Recently-bought items are deliberately left unsectioned (`section: nil`): Bring!'s
-                // purchase/recently split is a completion state, not a grouping, and
-                // `TodoDocumentBuilder` sorts the nil-section group last regardless of item order.
+                // Grouped under Bring!'s own "recently bought" header (`recentlyLabel(forList:)`)
+                // rather than left unsectioned: appending it after every purchase section, regardless
+                // of item order within it, is what keeps it sorting last the way Bring!'s own app
+                // shows it.
+                let recentlyLabel = await catalog.recentlyLabel(forList: listUuid)
                 for item in contents.recently.reversed().prefix(options.recentlyPurchasedLimit) {
                     guard seen.insert(item.itemId).inserted else { continue }
                     items.append(providerItem(
                         for: item, inList: listUuid, checked: true,
-                        displayName: articles[item.itemId]?.displayName, section: nil, cache: &cache
+                        displayName: articles[item.itemId]?.displayName, section: recentlyLabel,
+                        cache: &cache
                     ))
                 }
             }

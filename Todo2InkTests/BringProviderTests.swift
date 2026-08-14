@@ -239,10 +239,10 @@ final class BringProviderTests: XCTestCase {
         )
     }
 
-    /// Recently-bought items are always unsectioned — Bring!'s purchase/recently split is a
-    /// completion state, not a grouping — even when the catalogue has a section for them, so they
-    /// land in the trailing ungrouped group `TodoDocumentBuilder` sorts last.
-    func testRecentlyItemsAreUnsectionedAndLast() async throws {
+    /// Recently-bought items always land in Bring!'s own "recently bought" group, regardless of
+    /// whatever section the catalogue would otherwise assign them — localized to the list's own
+    /// locale (de-DE here) and sorting last, same as `TodoDocumentBuilder` puts a trailing group.
+    func testRecentlyItemsAreGroupedUnderRecentlyLabelAndLast() async throws {
         FakeBringServer.handler = { request in
             let path = request.url?.path ?? ""
             if path.hasSuffix("catalog.de-DE.json") {
@@ -275,8 +275,8 @@ final class BringProviderTests: XCTestCase {
         let items = try await provider().fetchItems(listIds: ["list-a"])["list-a"]
         XCTAssertEqual(items?.map(\.text), ["Apfel", "Birne"])
         XCTAssertEqual(
-            items?.map(\.section), ["Obst", nil],
-            "recently-bought items are always unsectioned, even though the catalogue has a section for them"
+            items?.map(\.section), ["Obst", "Zuletzt verwendet"],
+            "recently-bought items always land in Bring!'s own recently-bought group, localized to the list's locale"
         )
     }
 

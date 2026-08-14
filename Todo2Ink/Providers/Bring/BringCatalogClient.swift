@@ -163,6 +163,37 @@ actor BringCatalogClient {
         return await catalog(for: locale).sectionNameById
     }
 
+    /// The header Bring!'s own app puts above its "recently bought" list — nowhere in the API or the
+    /// article catalogue, since it isn't an article or a section Bring! lets the user reorder, just
+    /// fixed chrome in Bring!'s UI. Hardcoded here per language rather than derived, and keyed by the
+    /// list's own locale the same way `sectionLabels(forList:)` is, so a German list reads "Zuletzt
+    /// verwendet" regardless of what language the phone itself is in.
+    func recentlyLabel(forList listUuid: String) async -> String {
+        let locale = await self.locale(forList: listUuid)
+        let language = locale.split(separator: "-", maxSplits: 1).first.map(String.init) ?? locale
+        return Self.recentlyLabelByLanguage[language] ?? Self.recentlyLabelByLanguage["en"]!
+    }
+
+    /// One entry per language Bring! supports (not per region — this phrase doesn't vary within a
+    /// language across `BRING_SUPPORTED_LOCALES`' regions, e.g. `de-AT`/`de-CH`/`de-DE`). Verified
+    /// against a real German account; the rest are our own translations of that same phrase, not
+    /// pulled from Bring! itself, since Bring! exposes no string resource for it.
+    private static let recentlyLabelByLanguage: [String: String] = [
+        "de": "Zuletzt verwendet",
+        "en": "Recently used",
+        "fr": "Utilisés récemment",
+        "it": "Usati di recente",
+        "es": "Usados recientemente",
+        "pt": "Usados recentemente",
+        "nl": "Onlangs gebruikt",
+        "pl": "Ostatnio używane",
+        "sv": "Nyligen använda",
+        "nb": "Nylig brukt",
+        "tr": "Son kullanılanlar",
+        "hu": "Nemrég használt",
+        "ru": "Недавно использованные",
+    ]
+
     /// Parses `listSectionOrder`'s string value. A real account confirmed it is a plain JSON array
     /// of section ids; the object form is kept as a second guess because nothing about this field is
     /// documented and one account is one observation. An unparseable value logs its shape once —
