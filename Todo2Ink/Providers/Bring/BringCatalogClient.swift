@@ -134,22 +134,34 @@ actor BringCatalogClient {
 
     /// Where an item the catalogue has never heard of belongs — Bring!'s own "own articles" section.
     ///
-    /// It isn't a catalogue section and has no fixed id, but it is in `listSectionOrder` (a real
-    /// account's ends `…, "Baumarkt & Garten", "Eigene Artikel"`), so it is recoverable as the entry
-    /// the catalogue doesn't account for. Taking it from the user's own settings rather than
-    /// hardcoding a string means it arrives already in their language and already in the position
-    /// they put it.
-    ///
-    /// Nil when a list's order came from the catalogue rather than the settings: then every entry is
-    /// a catalogue section by construction, and there is nothing to infer.
+    /// Bring!'s own app groups hand-typed items under an "Eigene Artikel" header regardless of
+    /// whether this particular list has ever had a `listSectionOrder` saved for it — that grouping
+    /// isn't conditional on the setting existing, so this can't be either. When the setting *is*
+    /// present, it is recoverable as the one entry the catalogue doesn't account for (a real
+    /// account's ends `…, "Baumarkt & Garten", "Eigene Artikel"`), which arrives already in the
+    /// user's language and already in the position they put it. When it isn't — the common case for
+    /// a list that has never had its Bring!-side sections reordered — `ownArticlesSectionId` is used
+    /// instead, a synthetic id `sectionLabels(forList:)` resolves to a hardcoded, per-language label.
     func ownArticlesSection(forList listUuid: String) async -> String? {
-        let order = await sectionOrder(forList: listUuid)
+        await loadSettingsIfNeeded()
+
         let locale = await self.locale(forList: listUuid)
         var known = Set(await catalog(for: locale).sectionOrder)
         if known.isEmpty { known = Set(await catalog(for: Self.baseLocale).sectionOrder) }
         guard !known.isEmpty else { return nil }
-        return order.first { !known.contains($0) }
+
+        if let raw = sectionOrderByListUuid[listUuid], let parsed = parseSectionOrder(raw),
+           let own = parsed.first(where: { !known.contains($0) }) {
+            return own
+        }
+        return Self.ownArticlesSectionId
     }
+
+    /// Synthetic section id for `ownArticlesSection(forList:)`'s fallback — deliberately not a string
+    /// Bring! itself could plausibly use as a section id or a canonical item name, so it can never
+    /// collide with one. `sectionLabels(forList:)` is what turns it into "Eigene Artikel" or its
+    /// equivalent for display.
+    private static let ownArticlesSectionId = "todo2ink.bring.ownArticles"
 
     /// What to *print* above each section, keyed by the canonical `sectionId` that
     /// `sectionOrder(forList:)` and `BringArticle.section` speak in.
@@ -158,10 +170,43 @@ actor BringCatalogClient {
     /// ("Früchte & Gemüse" where the user's own Bring! says "Obst & Gemüse"). An id the catalogue has
     /// no name for is simply absent, and the caller shows the id — the same degradation an item with
     /// no catalogue entry already gets.
+    ///
+    /// Also carries the one non-catalogue id the caller may need to resolve:
+    /// `ownArticlesSectionId`, `ownArticlesSection(forList:)`'s synthetic fallback, mapped to its own
+    /// hardcoded label the same way `recentlyLabel(forList:)` supplies one for "recently bought".
     func sectionLabels(forList listUuid: String) async -> [String: String] {
         let locale = await self.locale(forList: listUuid)
-        return await catalog(for: locale).sectionNameById
+        var labels = await catalog(for: locale).sectionNameById
+        labels[Self.ownArticlesSectionId] = await ownArticlesLabel(forList: listUuid)
+        return labels
     }
+
+    /// The header Bring!'s own app puts above hand-typed items when this list carries no
+    /// `listSectionOrder` of its own — the synthetic-id counterpart to `recentlyLabel(forList:)`,
+    /// hardcoded per language for the same reason: it isn't an article or an orderable section, just
+    /// fixed chrome. "Eigene Artikel" is verified against a real German account; the rest are our own
+    /// translations of that phrase.
+    private func ownArticlesLabel(forList listUuid: String) async -> String {
+        let locale = await self.locale(forList: listUuid)
+        let language = locale.split(separator: "-", maxSplits: 1).first.map(String.init) ?? locale
+        return Self.ownArticlesLabelByLanguage[language] ?? Self.ownArticlesLabelByLanguage["en"]!
+    }
+
+    private static let ownArticlesLabelByLanguage: [String: String] = [
+        "de": "Eigene Artikel",
+        "en": "My items",
+        "fr": "Mes articles",
+        "it": "I miei articoli",
+        "es": "Mis artículos",
+        "pt": "Meus artigos",
+        "nl": "Eigen artikelen",
+        "pl": "Własne artykuły",
+        "sv": "Egna artiklar",
+        "nb": "Egne artikler",
+        "tr": "Kendi ürünlerim",
+        "hu": "Saját cikkek",
+        "ru": "Собственные товары",
+    ]
 
     /// The header Bring!'s own app puts above its "recently bought" list — nowhere in the API or the
     /// article catalogue, since it isn't an article or a section Bring! lets the user reorder, just

@@ -167,9 +167,11 @@ final class BringProviderTests: XCTestCase {
         XCTAssertEqual(items?.first?.section, "Fruit", "the base catalogue still supplies a correct section")
     }
 
-    /// A canonical name the catalogue has never heard of degrades to its own name and no section,
-    /// same as a missing catalogue would — never a failed sync.
-    func testAnItemAbsentFromTheCatalogueGetsNilSectionAndItsOwnName() async throws {
+    /// A canonical name the catalogue has never heard of degrades to its own name and Bring!'s "own
+    /// articles" grouping — never a failed sync, and never silently unsectioned, since Bring!'s own
+    /// app shows exactly this grouping regardless of whether `listSectionOrder` was ever saved for
+    /// this list.
+    func testAnItemAbsentFromTheCatalogueGetsOwnArticlesSectionAndItsOwnName() async throws {
         FakeBringServer.handler = { request in
             let path = request.url?.path ?? ""
             if path.hasSuffix("catalog.de-DE.json") {
@@ -198,7 +200,10 @@ final class BringProviderTests: XCTestCase {
 
         let items = try await provider().fetchItems(listIds: ["list-a"])["list-a"]
         XCTAssertEqual(items?.first?.text, "Mysteriöses Ding")
-        XCTAssertNil(items?.first?.section)
+        XCTAssertEqual(
+            items?.first?.section, "Eigene Artikel",
+            "no listSectionOrder was served, so the fallback own-articles label is used"
+        )
     }
 
     /// Purchase items are ordered by the list's section order (here, the catalogue's own order, since
