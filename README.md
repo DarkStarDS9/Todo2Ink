@@ -1,9 +1,12 @@
 # Todo2Ink
 
-Sync the Reminders lists you choose to your XTEINK companion display running
+Sync the to-do and shopping lists you choose to your XTEINK companion display running
 [`xteink-companion-ble`](https://github.com/DarkStarDS9/xteink-companion-ble) firmware. Check an
-item off on the reader — no phone needed — and it's checked off in Reminders next time your phone
-is nearby.
+item off on the reader — no phone needed — and it's checked off in the source app next time your
+phone is nearby.
+
+Two backends ship today: **Apple Reminders** and **Bring!**. The app syncs from *providers*, not
+from one app, so adding a backend means writing one `TodoProvider` conformance and nothing else.
 
 ## Why Reminders, not Notes
 
@@ -17,11 +20,13 @@ the `LIST` content shape, `LIST_STATE` sync-back).
 
 ## How it works
 
-1. **Pick lists** — choose which Reminders lists sync to the reader.
+1. **Pick lists** — choose which lists, from which providers, sync to the reader, and in
+   which order. Only the lists you select ever leave the phone.
 2. **Pair** — over BLE, via [`CompanionKit`](https://github.com/DarkStarDS9/CompanionKit), the same
    library SpokenFeeds and Snap2Ink use.
-3. **Push** — selected lists become one `TodoDocument` (protocol field `0x08`), reassembled
-   on-device as `Screen::List`.
+3. **Push** — the selected lists across all providers flatten into one `TodoDocument`
+   (protocol field `0x08`), reassembled on-device as `Screen::List`. Providers that group their
+   items (Bring! does; Reminders can't) become labelled sections on the reader.
 4. **Check off, anywhere** — an item can be toggled on the reader with no phone connected. The
    device accumulates the deviations and reports them back (`LIST_STATE_AVAIL`) the next time this
    app is in the foreground.
@@ -36,12 +41,29 @@ project.yml                 XcodeGen project definition — the .xcodeproj is ge
 Todo2Ink/
   Identity/                 appId, installId, button map, device icon
   Transport/                DisplayTransport seam + CompanionKit adapter
+  Providers/                the TodoProvider protocol, id mapping, document builder, ordering
+    Bring/                  Bring! client — auth, lists, localized catalogue
   Reminders/                EventKit access, list/reminder enumeration, completion write-back
-  Sync/                     TodoDocument <-> Reminders sync engine (pull, merge, push)
+  Sync/                     provider <-> TodoDocument sync engine (pull, merge, push)
+  Diagnostics/              in-app debug log
   ViewModels/
-  Views/                    SwiftUI — list picker, pairing screen
-Todo2InkTests/               unit tests
+  Views/                    SwiftUI — providers, list selection, per-provider settings
+Todo2InkTests/              unit tests
+docs/testflight.md          TestFlight deployment
 ```
+
+## Providers
+
+**Apple Reminders** uses EventKit and needs the Reminders permission the app asks for on first use.
+Lists are flat: EventKit exposes no subtasks or sections, so a Reminders list reaches the reader as
+one ungrouped run of items.
+
+**Bring!** talks to Bring!'s own app API, which is *unofficial and undocumented* — there is no
+public Bring! API, so this is what the Bring! app itself uses, and it can change or stop working
+without notice. Todo2Ink is not affiliated with, endorsed by, or supported by Bring! Labs AG. Your
+email and password are sent to Bring! to log in and are never stored: only the session tokens Bring!
+returns are kept, in the iOS keychain. Bring! lists are grouped, so they reach the reader as the
+same labelled sections the Bring! app shows, in the same order.
 
 ## Building
 
@@ -82,13 +104,9 @@ Xcode shadows the remote package reference automatically, no project file change
 
 ## Status
 
-Pairing reuses CompanionKit exactly as Snap2Ink does. The Reminders read/write layer
-(`Todo2Ink/Reminders/`) and the pull-merge-push sync loop (`Todo2Ink/Sync/TodoSyncEngine.swift`) are
-implemented, including the Reminders access prompt. Not yet paired against a real reader to confirm
-HELLO/ACQUIRE and the sync loop end to end — that needs a physical device and reader.
-
-See `docs/testflight.md` for TestFlight deployment status and the remaining one-time account setup
-(bundle ID registration, app record, provisioning profile) before a build can be uploaded.
+Both providers and the pull-merge-push sync loop are implemented and covered by unit tests, and the
+app ships to TestFlight (`docs/testflight.md`). The simulator has no Bluetooth, so pairing and sync
+must be exercised on real hardware.
 
 ## License
 
