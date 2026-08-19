@@ -104,9 +104,10 @@ Xcode shadows the remote package reference automatically, no project file change
 
 ## Status
 
-Both providers and the pull-merge-push sync loop are implemented and covered by unit tests, and the
-app ships to TestFlight (`docs/testflight.md`). The simulator has no Bluetooth, so pairing and sync
-must be exercised on real hardware.
+Working end to end. Both providers and the pull-merge-push sync loop are implemented and covered by
+unit tests, the app ships to TestFlight (`docs/testflight.md`), and pairing, push, and check-off
+sync-back have all been confirmed against a real phone and reader. The simulator has no Bluetooth,
+so anything touching the transport still has to be exercised on hardware.
 
 ## License
 
